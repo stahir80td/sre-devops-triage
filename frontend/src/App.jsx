@@ -21,14 +21,16 @@ function App() {
     }
   }, [darkMode]);
 
+  const API_URL = import.meta.env.PROD
+  ? 'https://devops-triage-api.onrender.com'   // prod demo backend
+  : (import.meta.env.VITE_API_URL ?? 'http://localhost:8080'); // dev
+
   const handleAnalyze = async (logData) => {
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/analyze`, {
+      const response = await fetch(`${API_URL}/api/analyze`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData),
       });
 

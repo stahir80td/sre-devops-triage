@@ -8,6 +8,10 @@ export default function IterativeChat() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
 
+  const API_URL = import.meta.env.PROD
+  ? 'https://devops-triage-api.onrender.com'   // prod demo backend
+  : (import.meta.env.VITE_API_URL ?? 'http://localhost:8080'); // dev
+  
   const handleAnalyzeOutput = async () => {
     if (!commandOutput.trim() || !commandRun.trim()) {
       alert('Please enter both the command you ran and its output');
@@ -16,7 +20,7 @@ export default function IterativeChat() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/iterate`, {
+      const res = await fetch(`${API_URL}/api/iterate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -11,10 +11,14 @@ export default function AnalysisResult({ data }) {
 
   const { parsed, analysis, commands } = data;
 
+  const API_URL = import.meta.env.PROD
+  ? 'https://devops-triage-api.onrender.com'   // prod demo backend
+  : (import.meta.env.VITE_API_URL ?? 'http://localhost:8080'); // dev
+  
   const handleWebSearch = async () => {
     setLoadingSearch(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/search`, {
+      const response = await fetch(`${API_URL}/api/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
