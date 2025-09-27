@@ -1,0 +1,704 @@
+{
+  "command_sets": {
+    "nginx_upstream_failed": [
+      {
+        "description": "Check if backend application service is running",
+        "command": "systemctl status <app-service-name>",
+        "expected": "active (running) - if inactive, service needs to be started",
+        "priority": 1
+      },
+      {
+        "description": "Verify backend is listening on the correct port",
+        "command": "netstat -tuln | grep <port>",
+        "expected": "LISTEN on 127.0.0.1:<port> or 0.0.0.0:<port>",
+        "priority": 2
+      },
+      {
+        "description": "Test direct connection to backend",
+        "command": "curl http://127.0.0.1:<port>/health",
+        "expected": "HTTP 200 response or service-specific health check",
+        "priority": 3
+      },
+      {
+        "description": "Check Nginx error logs for upstream details",
+        "command": "tail -50 /var/log/nginx/error.log | grep upstream",
+        "expected": "Connection errors with upstream IP and port",
+        "priority": 4
+      },
+      {
+        "description": "Verify Nginx configuration syntax",
+        "command": "nginx -t",
+        "expected": "syntax is ok, test is successful",
+        "priority": 5
+      }
+    ],
+    "nginx_timeout": [
+      {
+        "description": "Check current Nginx timeout settings",
+        "command": "grep -E 'proxy_.*_timeout' /etc/nginx/nginx.conf",
+        "expected": "Current timeout values (default 60s)",
+        "priority": 1
+      },
+      {
+        "description": "Check backend application response time",
+        "command": "time curl -I http://127.0.0.1:<port>/",
+        "expected": "Response time - if > 60s, increase timeouts",
+        "priority": 2
+      },
+      {
+        "description": "Monitor backend process resources",
+        "command": "ps aux | grep <app-process> | awk '{print $3,$4,$11}'",
+        "expected": "CPU and memory usage of backend process",
+        "priority": 3
+      },
+      {
+        "description": "Check for slow queries (if database-backed)",
+        "command": "tail -100 /var/log/mysql/slow-query.log",
+        "expected": "Slow database queries causing delays",
+        "priority": 4
+      }
+    ],
+    "k8s_crashloop": [
+      {
+        "description": "Get pod details and recent events",
+        "command": "kubectl describe pod <pod-name> -n <namespace>",
+        "expected": "Events section showing crash reason (OOMKilled, Error, etc)",
+        "priority": 1
+      },
+      {
+        "description": "Check logs from crashed container",
+        "command": "kubectl logs <pod-name> -n <namespace> --previous",
+        "expected": "Error logs from the last container instance before crash",
+        "priority": 2
+      },
+      {
+        "description": "Check container exit code",
+        "command": "kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.status.containerStatuses[0].lastState.terminated.exitCode}'",
+        "expected": "Exit code (137=OOMKilled, 1=Error, 143=SIGTERM)",
+        "priority": 3
+      },
+      {
+        "description": "View all container logs including init containers",
+        "command": "kubectl logs <pod-name> -n <namespace> --all-containers=true",
+        "expected": "Logs from all containers showing startup sequence",
+        "priority": 4
+      },
+      {
+        "description": "Check resource requests vs actual usage",
+        "command": "kubectl top pod <pod-name> -n <namespace>",
+        "expected": "Current CPU/Memory usage vs configured limits",
+        "priority": 5
+      }
+    ],
+    "k8s_imagepull": [
+      {
+        "description": "Check image pull error details",
+        "command": "kubectl describe pod <pod-name> -n <namespace> | grep -A5 'Failed'",
+        "expected": "Specific image pull failure reason (auth, not found, etc)",
+        "priority": 1
+      },
+      {
+        "description": "Verify image exists in registry",
+        "command": "docker pull <image-name>:<tag>",
+        "expected": "Success or specific error (not found, auth required)",
+        "priority": 2
+      },
+      {
+        "description": "Check imagePullSecrets configuration",
+        "command": "kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.imagePullSecrets}'",
+        "expected": "List of image pull secrets or empty if none configured",
+        "priority": 3
+      },
+      {
+        "description": "Verify secret exists and is valid",
+        "command": "kubectl get secret <secret-name> -n <namespace> -o yaml",
+        "expected": "Secret with .dockerconfigjson data",
+        "priority": 4
+      },
+      {
+        "description": "Test registry connectivity from node",
+        "command": "curl -I https://<registry-url>/v2/",
+        "expected": "HTTP 200 or 401 (auth required) - not connection refused",
+        "priority": 5
+      }
+    ],
+    "k8s_pending": [
+      {
+        "description": "Check why pod cannot be scheduled",
+        "command": "kubectl describe pod <pod-name> -n <namespace> | grep -A10 Events",
+        "expected": "Scheduling failure reason (resources, taints, selectors)",
+        "priority": 1
+      },
+      {
+        "description": "Check cluster node resources",
+        "command": "kubectl top nodes",
+        "expected": "Available CPU/Memory per node",
+        "priority": 2
+      },
+      {
+        "description": "Check for node taints",
+        "command": "kubectl describe nodes | grep Taints",
+        "expected": "Taints that might prevent scheduling",
+        "priority": 3
+      },
+      {
+        "description": "Verify PVC status if pod uses volumes",
+        "command": "kubectl get pvc -n <namespace>",
+        "expected": "All PVCs should be 'Bound', not 'Pending'",
+        "priority": 4
+      },
+      {
+        "description": "Check pod resource requests",
+        "command": "kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[*].resources}'",
+        "expected": "Pod's CPU/memory requests - may be too high",
+        "priority": 5
+      }
+    ],
+    "postgres_connection": [
+      {
+        "description": "Check PostgreSQL service status",
+        "command": "systemctl status postgresql",
+        "expected": "active (running) - if not, service needs to start",
+        "priority": 1
+      },
+      {
+        "description": "Verify PostgreSQL is listening on correct address",
+        "command": "netstat -plnt | grep postgres",
+        "expected": "LISTEN on 0.0.0.0:5432 or specific IP:5432",
+        "priority": 2
+      },
+      {
+        "description": "Check PostgreSQL configuration for listen_addresses",
+        "command": "grep listen_addresses /etc/postgresql/*/main/postgresql.conf",
+        "expected": "listen_addresses = '*' or specific IP",
+        "priority": 3
+      },
+      {
+        "description": "Check pg_hba.conf for connection rules",
+        "command": "cat /etc/postgresql/*/main/pg_hba.conf | grep -v '^#' | grep -v '^$'",
+        "expected": "Appropriate host rules for client IP/network",
+        "priority": 4
+      },
+      {
+        "description": "Test local PostgreSQL connection",
+        "command": "psql -h localhost -U postgres -c 'SELECT version();'",
+        "expected": "PostgreSQL version string or specific connection error",
+        "priority": 5
+      }
+    ],
+    "mysql_deadlock": [
+      {
+        "description": "Show recent deadlock information",
+        "command": "mysql -e 'SHOW ENGINE INNODB STATUS\\G' | grep -A50 'LATEST DETECTED DEADLOCK'",
+        "expected": "Deadlock details with transaction info",
+        "priority": 1
+      },
+      {
+        "description": "Check current running transactions",
+        "command": "mysql -e 'SELECT * FROM information_schema.innodb_trx;'",
+        "expected": "Active transactions and their states",
+        "priority": 2
+      },
+      {
+        "description": "Show locks waiting",
+        "command": "mysql -e 'SELECT * FROM information_schema.innodb_locks;'",
+        "expected": "Current lock wait situations",
+        "priority": 3
+      },
+      {
+        "description": "Check slow query log for problematic queries",
+        "command": "tail -100 /var/log/mysql/slow-query.log",
+        "expected": "Long-running queries that may cause locks",
+        "priority": 4
+      },
+      {
+        "description": "Review application transaction isolation level",
+        "command": "mysql -e 'SELECT @@transaction_isolation;'",
+        "expected": "Current isolation level (REPEATABLE-READ, READ-COMMITTED)",
+        "priority": 5
+      }
+    ],
+    "disk_full": [
+      {
+        "description": "Check filesystem disk usage",
+        "command": "df -h",
+        "expected": "Usage percentages - look for 100% or >90%",
+        "priority": 1
+      },
+      {
+        "description": "Find top 10 largest directories",
+        "command": "du -h / --max-depth=1 2>/dev/null | sort -h | tail -10",
+        "expected": "Largest directories consuming space",
+        "priority": 2
+      },
+      {
+        "description": "Check inode usage (often overlooked)",
+        "command": "df -i",
+        "expected": "Inode usage - can be 100% even if disk has space",
+        "priority": 3
+      },
+      {
+        "description": "Find large files over 100MB",
+        "command": "find / -type f -size +100M -exec ls -lh {} \\; 2>/dev/null | head -20",
+        "expected": "List of large files with paths",
+        "priority": 4
+      },
+      {
+        "description": "Clean old journal logs (systemd)",
+        "command": "journalctl --disk-usage && journalctl --vacuum-time=7d",
+        "expected": "Journal size before/after cleanup",
+        "priority": 5
+      }
+    ],
+    "oom_killed": [
+      {
+        "description": "Check OOM killer logs in system messages",
+        "command": "dmesg | grep -i 'killed process' | tail -20",
+        "expected": "List of processes killed by OOM killer",
+        "priority": 1
+      },
+      {
+        "description": "View detailed OOM events from journal",
+        "command": "journalctl -k | grep -i 'out of memory' | tail -20",
+        "expected": "OOM events with timestamps and process info",
+        "priority": 2
+      },
+      {
+        "description": "Check current memory usage",
+        "command": "free -h",
+        "expected": "Available memory - should have some free+buffers",
+        "priority": 3
+      },
+      {
+        "description": "List top memory consuming processes",
+        "command": "ps aux --sort=-%mem | head -15",
+        "expected": "Processes sorted by memory usage (%MEM column)",
+        "priority": 4
+      },
+      {
+        "description": "Check swap usage",
+        "command": "swapon --show && vmstat 1 3",
+        "expected": "Swap status and memory statistics",
+        "priority": 5
+      }
+    ],
+    "java_oom": [
+      {
+        "description": "Check current JVM heap settings",
+        "command": "ps aux | grep java | grep -oE 'Xm[xs][^ ]*'",
+        "expected": "Current -Xmx and -Xms values",
+        "priority": 1
+      },
+      {
+        "description": "Look for heap dump files",
+        "command": "find /tmp /var/log -name '*.hprof' -o -name 'java_pid*.dump' 2>/dev/null",
+        "expected": "Heap dump locations for analysis",
+        "priority": 2
+      },
+      {
+        "description": "Check Java process memory usage",
+        "command": "jps -l && jstat -gc <pid> 1000 5",
+        "expected": "Java processes and GC statistics",
+        "priority": 3
+      },
+      {
+        "description": "Get JVM memory info if running",
+        "command": "jcmd <pid> VM.native_memory summary",
+        "expected": "Native memory breakdown by category",
+        "priority": 4
+      },
+      {
+        "description": "Review application logs for OOM",
+        "command": "grep -r 'OutOfMemoryError\\|java.lang.OutOfMemoryError' /var/log/<app>/ | tail -20",
+        "expected": "OOM errors with stack traces",
+        "priority": 5
+      }
+    ],
+    "docker_network": [
+      {
+        "description": "List Docker networks",
+        "command": "docker network ls",
+        "expected": "All networks - check if containers are in same network",
+        "priority": 1
+      },
+      {
+        "description": "Inspect container network settings",
+        "command": "docker inspect <container-name> | grep -A20 NetworkSettings",
+        "expected": "IP address, network name, aliases",
+        "priority": 2
+      },
+      {
+        "description": "Test DNS resolution between containers",
+        "command": "docker exec <container> nslookup <other-container-name>",
+        "expected": "Resolved IP address or DNS failure",
+        "priority": 3
+      },
+      {
+        "description": "Check container connectivity",
+        "command": "docker exec <container> ping -c 3 <target-container>",
+        "expected": "Ping responses or network unreachable",
+        "priority": 4
+      },
+      {
+        "description": "Review Docker network configuration",
+        "command": "docker network inspect <network-name>",
+        "expected": "Subnet, gateway, and attached containers",
+        "priority": 5
+      }
+    ],
+    "ssl_expired": [
+      {
+        "description": "Check certificate expiration date",
+        "command": "echo | openssl s_client -connect <domain>:443 2>/dev/null | openssl x509 -noout -dates",
+        "expected": "notBefore and notAfter dates",
+        "priority": 1
+      },
+      {
+        "description": "View certificate details",
+        "command": "openssl x509 -in /etc/ssl/certs/<cert>.crt -text -noout | grep -A2 Validity",
+        "expected": "Certificate validity period",
+        "priority": 2
+      },
+      {
+        "description": "Check all certificates in directory",
+        "command": "for cert in /etc/ssl/certs/*.crt; do echo $cert; openssl x509 -in $cert -noout -enddate; done",
+        "expected": "Expiration dates for all certificates",
+        "priority": 3
+      },
+      {
+        "description": "Verify certificate chain",
+        "command": "openssl s_client -connect <domain>:443 -showcerts",
+        "expected": "Full certificate chain",
+        "priority": 4
+      },
+      {
+        "description": "Check Nginx/Apache SSL configuration",
+        "command": "grep -r 'ssl_certificate' /etc/nginx/ /etc/apache2/ 2>/dev/null",
+        "expected": "SSL certificate file paths in config",
+        "priority": 5
+      }
+    ],
+    "redis_connection": [
+      {
+        "description": "Check Redis service status",
+        "command": "systemctl status redis",
+        "expected": "active (running) status",
+        "priority": 1
+      },
+      {
+        "description": "Test Redis connection locally",
+        "command": "redis-cli ping",
+        "expected": "PONG response",
+        "priority": 2
+      },
+      {
+        "description": "Check Redis bind address configuration",
+        "command": "grep '^bind' /etc/redis/redis.conf",
+        "expected": "Bind address (127.0.0.1 or 0.0.0.0)",
+        "priority": 3
+      },
+      {
+        "description": "Verify Redis port is listening",
+        "command": "netstat -tuln | grep 6379",
+        "expected": "LISTEN on port 6379",
+        "priority": 4
+      },
+      {
+        "description": "Check Redis logs for errors",
+        "command": "tail -50 /var/log/redis/redis-server.log",
+        "expected": "Connection attempts and errors",
+        "priority": 5
+      }
+    ],
+    "elasticsearch_red": [
+      {
+        "description": "Check cluster health",
+        "command": "curl -XGET 'localhost:9200/_cluster/health?pretty'",
+        "expected": "Status: green, yellow, or red with unassigned shards",
+        "priority": 1
+      },
+      {
+        "description": "List unassigned shards",
+        "command": "curl -XGET 'localhost:9200/_cat/shards?h=index,shard,prirep,state,unassigned.reason' | grep UNASSIGNED",
+        "expected": "Unassigned shards with reasons",
+        "priority": 2
+      },
+      {
+        "description": "Check node status",
+        "command": "curl -XGET 'localhost:9200/_cat/nodes?v'",
+        "expected": "All nodes should be listed",
+        "priority": 3
+      },
+      {
+        "description": "Check disk space on all nodes",
+        "command": "curl -XGET 'localhost:9200/_cat/allocation?v'",
+        "expected": "Disk usage per node (should be <85%)",
+        "priority": 4
+      },
+      {
+        "description": "Review Elasticsearch logs",
+        "command": "tail -100 /var/log/elasticsearch/elasticsearch.log | grep -i error",
+        "expected": "Errors related to shard allocation or node issues",
+        "priority": 5
+      }
+    ],
+    "kafka_lag": [
+      {
+        "description": "Check consumer group lag",
+        "command": "kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group <group-name> --describe",
+        "expected": "LAG column showing messages behind",
+        "priority": 1
+      },
+      {
+        "description": "List all consumer groups",
+        "command": "kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list",
+        "expected": "All consumer groups in the cluster",
+        "priority": 2
+      },
+      {
+        "description": "Check topic partition count",
+        "command": "kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic <topic-name>",
+        "expected": "Partition count and replication factor",
+        "priority": 3
+      },
+      {
+        "description": "Monitor consumer group members",
+        "command": "kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group <group-name> --members --describe",
+        "expected": "Active consumers and partition assignments",
+        "priority": 4
+      },
+      {
+        "description": "Check broker logs for rebalancing",
+        "command": "tail -100 /var/log/kafka/server.log | grep -i rebalanc",
+        "expected": "Consumer group rebalancing events",
+        "priority": 5
+      }
+    ],
+    "dns_failure": [
+      {
+        "description": "Test DNS resolution",
+        "command": "nslookup <domain>",
+        "expected": "IP address or NXDOMAIN error",
+        "priority": 1
+      },
+      {
+        "description": "Check DNS servers configured",
+        "command": "cat /etc/resolv.conf",
+        "expected": "Nameserver entries (e.g., nameserver 8.8.8.8)",
+        "priority": 2
+      },
+      {
+        "description": "Test with different DNS server",
+        "command": "dig @8.8.8.8 <domain>",
+        "expected": "Resolution result using Google DNS",
+        "priority": 3
+      },
+      {
+        "description": "Check DNS connectivity",
+        "command": "ping -c 3 8.8.8.8",
+        "expected": "Successful ping to external DNS",
+        "priority": 4
+      },
+      {
+        "description": "Verify domain registration",
+        "command": "whois <domain> | grep -i 'expir\\|status'",
+        "expected": "Domain status and expiration",
+        "priority": 5
+      }
+    ],
+    "permission_denied": [
+      {
+        "description": "Check file permissions",
+        "command": "ls -la <file-path>",
+        "expected": "Permission bits (rwxr-xr-x) and owner",
+        "priority": 1
+      },
+      {
+        "description": "Check file ownership",
+        "command": "stat <file-path> | grep -E 'Access:|Uid:|Gid:'",
+        "expected": "Owner and group information",
+        "priority": 2
+      },
+      {
+        "description": "Check process user",
+        "command": "ps aux | grep <process-name> | awk '{print $1}'",
+        "expected": "User running the process",
+        "priority": 3
+      },
+      {
+        "description": "Check SELinux status (if applicable)",
+        "command": "getenforce",
+        "expected": "Enforcing, Permissive, or Disabled",
+        "priority": 4
+      },
+      {
+        "description": "Check AppArmor status (if applicable)",
+        "command": "aa-status 2>/dev/null || echo 'AppArmor not installed'",
+        "expected": "AppArmor profiles and enforcement",
+        "priority": 5
+      }
+    ],
+    "port_in_use": [
+      {
+        "description": "Find process using the port",
+        "command": "lsof -i :<port>",
+        "expected": "Process name and PID using the port",
+        "priority": 1
+      },
+      {
+        "description": "Alternative: netstat to find port usage",
+        "command": "netstat -tuln | grep :<port>",
+        "expected": "Process listening on the port",
+        "priority": 2
+      },
+      {
+        "description": "Check if process should be running",
+        "command": "systemctl status <service-name>",
+        "expected": "Service status (may need to stop old instance)",
+        "priority": 3
+      },
+      {
+        "description": "Kill process if stuck (use with caution)",
+        "command": "kill -9 <pid>",
+        "expected": "Process terminated, port released",
+        "priority": 4
+      },
+      {
+        "description": "Verify port is now free",
+        "command": "lsof -i :<port>",
+        "expected": "No output (port is free)",
+        "priority": 5
+      }
+    ],
+    "connection_timeout": [
+      {
+        "description": "Test connectivity with telnet",
+        "command": "telnet <host> <port>",
+        "expected": "Connected or Connection refused/timed out",
+        "priority": 1
+      },
+      {
+        "description": "Check if target host is reachable",
+        "command": "ping -c 3 <host>",
+        "expected": "Ping responses or 100% packet loss",
+        "priority": 2
+      },
+      {
+        "description": "Trace route to destination",
+        "command": "traceroute <host>",
+        "expected": "Network hops to destination or timeout location",
+        "priority": 3
+      },
+      {
+        "description": "Check firewall rules",
+        "command": "iptables -L -n | grep <port>",
+        "expected": "Firewall rules affecting the port",
+        "priority": 4
+      },
+      {
+        "description": "Verify target service is running",
+        "command": "curl -I --max-time 5 http://<host>:<port>/",
+        "expected": "HTTP response or timeout error",
+        "priority": 5
+      }
+    ],
+    "npm_network": [
+      {
+        "description": "Check npm registry configuration",
+        "command": "npm config get registry",
+        "expected": "Registry URL (default: https://registry.npmjs.org/)",
+        "priority": 1
+      },
+      {
+        "description": "Test npm registry connectivity",
+        "command": "curl -I https://registry.npmjs.org/",
+        "expected": "HTTP 200 response",
+        "priority": 2
+      },
+      {
+        "description": "Check proxy settings",
+        "command": "npm config get proxy && npm config get https-proxy",
+        "expected": "Proxy configuration or null",
+        "priority": 3
+      },
+      {
+        "description": "Try with different registry",
+        "command": "npm install --registry=https://registry.npmjs.org/ <package>",
+        "expected": "Success or specific error",
+        "priority": 4
+      },
+      {
+        "description": "Clear npm cache",
+        "command": "npm cache clean --force",
+        "expected": "Cache cleared",
+        "priority": 5
+      }
+    ],
+    "general": [
+      {
+        "description": "Check system logs for errors",
+        "command": "journalctl -xe --no-pager | tail -50",
+        "expected": "Recent system log entries",
+        "priority": 1
+      },
+      {
+        "description": "Check system resource usage",
+        "command": "top -b -n 1 | head -20",
+        "expected": "CPU, memory, and process overview",
+        "priority": 2
+      }
+    ]
+  },
+  "iterative_responses": {
+    "service_inactive": {
+      "analysis": "Service is not running. It needs to be started.",
+      "commands": [
+        {
+          "description": "Start the service",
+          "command": "sudo systemctl start <service-name>",
+          "expected": "Service started successfully"
+        },
+        {
+          "description": "Enable service on boot",
+          "command": "sudo systemctl enable <service-name>",
+          "expected": "Service enabled"
+        },
+        {
+          "description": "Check service logs",
+          "command": "journalctl -u <service-name> -n 50",
+          "expected": "Recent service logs"
+        }
+      ]
+    },
+    "port_not_listening": {
+      "analysis": "Port is not in LISTEN state. Service may not be configured correctly or failed to bind.",
+      "commands": [
+        {
+          "description": "Check service configuration",
+          "command": "cat /etc/<service>/config | grep -i port",
+          "expected": "Port configuration"
+        },
+        {
+          "description": "Check for bind errors in logs",
+          "command": "journalctl -u <service> | grep -i 'bind\\|address'",
+          "expected": "Binding error messages"
+        }
+      ]
+    },
+    "high_cpu": {
+      "analysis": "CPU usage is high. Identify resource-intensive processes and optimize or scale.",
+      "commands": [
+        {
+          "description": "Find top CPU processes",
+          "command": "ps aux --sort=-%cpu | head -10",
+          "expected": "Processes sorted by CPU usage"
+        },
+        {
+          "description": "Check load average trend",
+          "command": "uptime",
+          "expected": "Load averages for 1, 5, 15 minutes"
+        }
+      ]
+    }
+  }
+}
